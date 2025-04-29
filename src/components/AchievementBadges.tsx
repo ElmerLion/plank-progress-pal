@@ -1,3 +1,5 @@
+// src/components/AchievementBadges.tsx
+
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -14,94 +16,81 @@ import {
 } from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/sonner";
 
-type BadgeRow = {
+//
+// Raw row coming back from badges joined to user_badges
+//
+type RawBadgeRow = {
     id: number;
     name: string;
-    icon_url: string;
+    icon_url: string;          // your emoji/icon string
     description: string;
     criteria: { [key: string]: any };
     user_badges: {
         progress: number;
         max_progress: number;
         earned_at: string | null;
-    } | null;
+        user_id: string;
+    }[];
 };
 
-const AchievementBadges: React.FC = () => {
+//
+// Our flattened type for the UI
+//
+type BadgeRow = Omit<RawBadgeRow, "user_badges"> & {
+    user_badges: RawBadgeRow["user_badges"][0] | null;
+};
+
+interface AchievementBadgesProps {
+    userId: string;
+}
+
+const AchievementBadges: React.FC<AchievementBadgesProps> = ({ userId }) => {
     const [badges, setBadges] = useState<BadgeRow[]>([]);
     const [loading, setLoading] = useState(true);
 
     const loadBadges = useCallback(async () => {
         setLoading(true);
-        const {
-            data: { user },
-            error: userErr,
-        } = await supabase.auth.getUser();
-        if (userErr || !user) {
-            toast.error("No user");
+
+        // grab only this user's badges
+        const { data, error } = await supabase
+            .from<RawBadgeRow>("badges")
+            .select(`
+        id,
+        name,
+        icon_url,
+        description,
+        criteria,
+        user_badges!inner (
+          progress,
+          max_progress,
+          earned_at,
+          user_id
+        )
+      `)
+            .eq("user_badges.user_id", userId);
+
+        if (error) {
+            toast.error("Could not load badges");
             setLoading(false);
             return;
         }
 
-        const { data, error } = await supabase
-            .from<BadgeRow>("badges")
-            .select(`
-                id,
-                name,
-                icon_url,
-                description,
-                criteria,
-                user_badges!inner (
-                    progress,
-                    max_progress,
-                    earned_at,
-                    user_id
-                )
-            `)
-            .eq("user_badges.user_id", user.id);
+        const flattened = (data || []).map((b) => ({
+            id: b.id,
+            name: b.name,
+            icon_url: b.icon_url,
+            description: b.description,
+            criteria: b.criteria,
+            user_badges: b.user_badges[0] ?? null,
+        }));
 
-        if (error) {
-            toast.error("Could not load badges");
-        } else {
-            setBadges(data || []);
-        }
+        setBadges(flattened);
         setLoading(false);
-    }, []);
+    }, [userId]);
 
     useEffect(() => {
-        let chan: ReturnType<typeof supabase["channel"]>;
-
-        (async () => {
-            await loadBadges();
-
-            const {
-                data: { user },
-            } = await supabase.auth.getUser();
-            if (!user) return;
-
-            // subscribe to any changes on user_badges for this user
-            chan = supabase
-                .channel("user_badges_changes")
-                .on(
-                    "postgres_changes",
-                    {
-                        event: "*",
-                        schema: "public",
-                        table: "user_badges",
-                        filter: `user_id=eq.${user.id}`,
-                    },
-                    () => {
-                        loadBadges();
-                    }
-                )
-                .subscribe();
-        })();
-
-        return () => {
-            if (chan) {
-                supabase.removeChannel(chan);
-            }
-        };
+        loadBadges();
+        // you can add a realtime subscription if you like, hooking into user_badges for userId
     }, [loadBadges]);
 
     if (loading) {
@@ -141,8 +130,6 @@ const AchievementBadges: React.FC = () => {
                                             >
                                                 {b.name}
                                             </span>
-
-                                            {/* show bar for any badge with a max_progress */}
                                             {!achieved && ub.max_progress > 0 && (
                                                 <div className="w-full h-1 bg-gray-200 rounded-full mt-1 overflow-hidden">
                                                     <div
@@ -156,19 +143,13 @@ const AchievementBadges: React.FC = () => {
                                     <TooltipContent side="top">
                                         <div className="text-sm p-1">
                                             <p className="font-semibold">{b.name}</p>
-                                            <p className="text-xs text-gray-500">
-                                                {b.description}
-                                            </p>
+                                            <p className="text-xs text-gray-500">{b.description}</p>
                                             {achieved ? (
                                                 <p className="text-xs text-plank-green mt-1">
                                                     Achieved:{" "}
                                                     {new Date(ub.earned_at!).toLocaleDateString(
                                                         "en-US",
-                                                        {
-                                                            day: "numeric",
-                                                            month: "long",
-                                                            year: "numeric",
-                                                        }
+                                                        { day: "numeric", month: "long", year: "numeric" }
                                                     )}
                                                 </p>
                                             ) : ub.max_progress > 0 ? (

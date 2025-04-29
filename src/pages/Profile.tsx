@@ -156,7 +156,12 @@ const ProfilePage: React.FC = () => {
               userId={profileId}
               onViewAll={() => navigate("/history")}
             />
-          </section>
+                  </section>
+
+                  <section>
+                      <h2 className="text-xl font-semibold mb-4">Achievements</h2>
+                      <AchievementBadges userId={profileId!} />
+                  </section>
 
           <section>
             <h2 className="text-xl font-semibold mb-4">My Progress</h2>

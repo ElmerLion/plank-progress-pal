@@ -1,6 +1,4 @@
-﻿// src/components/PlankHistory.tsx
-
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
@@ -15,6 +13,7 @@ import {
     DialogClose,
 } from "@/components/ui/dialog";
 import FullHistoryDialog from "./FullHistoryDialog";
+import PlankDetailDialog from "./PlankDetailDialog";
 import { useAuth } from "@/hooks/useAuth";
 
 export interface PlankEntry {
@@ -39,7 +38,7 @@ const PlankHistory: React.FC<PlankHistoryProps> = ({ userId }) => {
     const [recent, setRecent] = useState<PlankEntry[]>([]);
     const [loadingRecent, setLoadingRecent] = useState(true);
 
-    // Add-new dialog state
+    // Add-new dialog
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [newDate, setNewDate] = useState("");
     const [newTime, setNewTime] = useState("00:00");
@@ -189,30 +188,33 @@ const PlankHistory: React.FC<PlankHistoryProps> = ({ userId }) => {
                 ) : (
                     <ul className="divide-y">
                         {recent.map(e => (
-                            <li
+                            <PlankDetailDialog
                                 key={e.id}
-                                className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-                            >
-                                <div>
-                                    <p className="font-medium">{e.day}</p>
-                                    <p className="text-sm text-gray-500">{e.date}</p>
-                                </div>
-                                <div className="flex items-center space-x-3">
-                                    <div className="h-8 w-8 bg-plank-light-blue rounded-full flex items-center justify-center">
-                                        <Clock className="h-4 w-4 text-plank-blue" />
-                                    </div>
-                                    <span className="font-semibold">{formatTime(e.time)}</span>
-                                    {isOwnProfile && (
-                                        <button
-                                            onClick={() => handleDelete(e.id)}
-                                            aria-label="Delete plank"
-                                            className="p-1 hover:bg-red-100 rounded"
-                                        >
-                                            <Trash2 className="h-5 w-5 text-red-500" />
-                                        </button>
-                                    )}
-                                </div>
-                            </li>
+                                plankId={e.id}
+                                trigger={
+                                    <li className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer">
+                                        <div>
+                                            <p className="font-medium">{e.day}</p>
+                                            <p className="text-sm text-gray-500">{e.date}</p>
+                                        </div>
+                                        <div className="flex items-center space-x-3">
+                                            <div className="h-8 w-8 bg-plank-light-blue rounded-full flex items-center justify-center">
+                                                <Clock className="h-4 w-4 text-plank-blue" />
+                                            </div>
+                                            <span className="font-semibold">{formatTime(e.time)}</span>
+                                            {isOwnProfile && (
+                                                <button
+                                                    onClick={() => handleDelete(e.id)}
+                                                    aria-label="Delete plank"
+                                                    className="p-1 hover:bg-red-100 rounded"
+                                                >
+                                                    <Trash2 className="h-5 w-5 text-red-500" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </li>
+                                }
+                            />
                         ))}
                     </ul>
                 )}
