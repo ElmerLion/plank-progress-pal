@@ -1,3 +1,5 @@
+// src/components/UserStats.tsx
+
 import React, { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/sonner";
@@ -11,11 +13,6 @@ interface UserStatsRow {
     total_planks: number;
 }
 
-interface LeaderboardEntry {
-    user_id: string;
-    rank: number;
-}
-
 interface UserStatsProps {
     userId?: string;
 }
@@ -23,11 +20,14 @@ interface UserStatsProps {
 const UserStats: React.FC<UserStatsProps> = ({ userId }) => {
     const [stats, setStats] = useState<UserStatsRow | null>(null);
     const [loadingStats, setLoadingStats] = useState(true);
+
     const [monthlyRank, setMonthlyRank] = useState<number | null>(null);
-    const [monthlyPercentile, setMonthlyPercentile] = useState<number | null>(null);
+    const [monthlyPercentile, setMonthlyPercentile] = useState<number | null>(
+        null
+    );
     const [loadingRank, setLoadingRank] = useState(true);
 
-    // 1) load the base stats
+    // 1) load the base stats (streak, best-ever, total planks)
     useEffect(() => {
         async function fetchStats() {
             setLoadingStats(true);
@@ -63,36 +63,60 @@ const UserStats: React.FC<UserStatsProps> = ({ userId }) => {
         fetchStats();
     }, [userId]);
 
-    // 2) fetch the leaderboard and extract *this* user’s rank & percentile
+    // 2) fetch last-30-day leaderboard, extract this user’s rank & percentile
     useEffect(() => {
         async function fetchRank() {
             setLoadingRank(true);
             try {
-                const { data: board, error } = await supabase
-                    .rpc<LeaderboardEntry[]>("get_monthly_leaderboard");
-                if (error) throw error;
-
                 let uid = userId;
                 if (!uid) {
                     const {
                         data: { user },
+                        error: userErr,
                     } = await supabase.auth.getUser();
-                    uid = user!.id;
+                    if (userErr || !user) throw userErr || new Error("No user");
+                    uid = user.id;
                 }
 
-                // find the entry for this user
-                const me = board?.find((e) => e.user_id === uid);
-                if (me) {
-                    setMonthlyRank(me.rank);
-                    // percentile = rank / totalCount * 100
-                    setMonthlyPercentile((me.rank / board!.length) * 100);
+                // compute 30-day cutoff
+                const cutoff = new Date();
+                cutoff.setDate(cutoff.getDate() - 30);
+                const cutoffIso = cutoff.toISOString().slice(0, 10); // "YYYY-MM-DD"
+
+                // fetch all planks in last 30 days
+                const { data: planks, error: plankErr } = await supabase
+                    .from<{ user_id: string; duration_s: number }>("planks")
+                    .select("user_id, duration_s")
+                    .gte("plank_date", cutoffIso);
+
+                if (plankErr) throw plankErr;
+
+                // aggregate total durations per user
+                const totals: Record<string, number> = {};
+                (planks || []).forEach((p) => {
+                    totals[p.user_id] = (totals[p.user_id] || 0) + p.duration_s;
+                });
+
+                // build sorted array
+                const sorted = Object.entries(totals)
+                    .map(([user_id, total_time]) => ({ user_id, total_time }))
+                    .sort((a, b) => b.total_time - a.total_time);
+
+                // find this user’s position
+                const totalCount = sorted.length;
+                const myIndex = sorted.findIndex((e) => e.user_id === uid);
+
+                if (myIndex >= 0) {
+                    const rank = myIndex + 1;
+                    setMonthlyRank(rank);
+                    setMonthlyPercentile((rank / totalCount) * 100);
                 } else {
                     setMonthlyRank(null);
                     setMonthlyPercentile(null);
                 }
             } catch (err) {
                 console.error(err);
-                toast.error("Could not load monthly ranking.");
+                toast.error("Could not load 30-day ranking.");
             } finally {
                 setLoadingRank(false);
             }
@@ -105,7 +129,6 @@ const UserStats: React.FC<UserStatsProps> = ({ userId }) => {
         return <div className="text-center py-8">Loading statistics…</div>;
     }
 
-    // default placeholders
     const {
         current_streak = 0,
         best_time_seconds = 0,
@@ -183,21 +206,19 @@ const UserStats: React.FC<UserStatsProps> = ({ userId }) => {
                 </CardContent>
             </Card>
 
-            {/* Monthly Ranking */}
+            {/* 30-Day Ranking */}
             <Card className="plank-card">
                 <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground flex items-center">
                         <TrendingUp className="h-4 w-4 text-plank-green mr-2" />
-                        Monthly Ranking
+                        30-Day Ranking
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="text-2xl font-bold">
                         {monthlyRank != null ? `#${monthlyRank}` : "–"}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                        {pctText}
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">{pctText}</p>
                 </CardContent>
             </Card>
         </div>
